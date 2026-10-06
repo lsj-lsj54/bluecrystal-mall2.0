@@ -13,5 +13,5 @@ package com.bluecrystal.cart.domain.vo;
  * @param price 价格，单位：分
  * @param image 主图地址
  */
-public record CartVO(Long id, Long itemId, Integer num, String name, String spec, Integer price, String image) {
-}
+public record CartVO(
+    Long id, Long itemId, Integer num, String name, String spec, Integer price, String image) {}

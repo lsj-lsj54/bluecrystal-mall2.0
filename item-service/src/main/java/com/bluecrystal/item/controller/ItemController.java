@@ -1,5 +1,6 @@
 package com.bluecrystal.item.controller;
 
+import com.bluecrystal.api.dto.ItemDTO;
 import com.bluecrystal.common.domain.PageDTO;
 import com.bluecrystal.common.domain.R;
 import com.bluecrystal.item.domain.dto.ItemStockDeductDTO;
@@ -28,30 +29,42 @@ import java.util.List;
 @RequiredArgsConstructor
 public class ItemController {
 
-    private final IItemService itemService;
+  private final IItemService itemService;
 
-    @Operation(summary = "查询商品详情")
-    @GetMapping("/{id}")
-    public R<ItemVO> queryById(@PathVariable("id") Long id) {
-        return R.ok(itemService.queryById(id));
-    }
+  @Operation(summary = "查询商品详情")
+  @GetMapping("/{id}")
+  public R<ItemVO> queryById(@PathVariable("id") Long id) {
+    return R.ok(toVO(itemService.queryById(id)));
+  }
 
-    @Operation(summary = "批量查询商品（供购物车/订单补全信息）")
-    @GetMapping
-    public R<List<ItemVO>> queryByIds(@RequestParam("ids") List<Long> ids) {
-        return R.ok(itemService.queryByIds(ids));
-    }
+  @Operation(summary = "批量查询商品（供购物车/订单补全信息）")
+  @GetMapping
+  public R<List<ItemVO>> queryByIds(@RequestParam("ids") List<Long> ids) {
+    return R.ok(itemService.queryByIds(ids).stream().map(this::toVO).toList());
+  }
 
-    @Operation(summary = "商品分页查询")
-    @GetMapping("/page")
-    public R<PageDTO<ItemVO>> page(ItemPageQuery query) {
-        return R.ok(itemService.pageQuery(query));
-    }
+  @Operation(summary = "商品分页查询")
+  @GetMapping("/page")
+  public R<PageDTO<ItemVO>> page(ItemPageQuery query) {
+    return R.ok(itemService.pageQuery(query));
+  }
 
-    @Operation(summary = "扣减库存（由 trade-service 在全局事务中调用）")
-    @PostMapping("/stock/deduct")
-    public R<Void> deductStock(@Valid @RequestBody List<ItemStockDeductDTO> details) {
-        itemService.deductStock(details);
-        return R.ok();
-    }
+  @Operation(summary = "扣减库存（由 trade-service 在全局事务中调用）")
+  @PostMapping("/stock/deduct")
+  public R<Void> deductStock(@Valid @RequestBody List<ItemStockDeductDTO> details) {
+    itemService.deductStock(details);
+    return R.ok();
+  }
+
+  /** DTO → 前端 VO（字段对齐，直接透传）。 */
+  private ItemVO toVO(ItemDTO dto) {
+    return new ItemVO(
+        dto.id(),
+        dto.name(),
+        dto.price(),
+        dto.image(),
+        dto.spec(),
+        dto.stock(),
+        dto.sold());
+  }
 }

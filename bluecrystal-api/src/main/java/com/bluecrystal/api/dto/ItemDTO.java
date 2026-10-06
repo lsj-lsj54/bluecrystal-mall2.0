@@ -9,6 +9,7 @@ package com.bluecrystal.api.dto;
  * @param image 主图地址
  * @param spec 规格描述（JSON 字符串）
  * @param stock 库存
+ * @param sold 销量
  */
-public record ItemDTO(Long id, String name, Integer price, String image, String spec, Integer stock) {
+public record ItemDTO(Long id, String name, Integer price, String image, String spec, Integer stock, Integer sold) {
 }

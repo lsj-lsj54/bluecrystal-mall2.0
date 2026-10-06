@@ -1,5 +1,6 @@
 package com.bluecrystal.item.service;
 
+import com.bluecrystal.api.dto.ItemDTO;
 import com.bluecrystal.common.domain.PageDTO;
 import com.bluecrystal.item.domain.dto.ItemStockDeductDTO;
 import com.bluecrystal.item.domain.query.ItemPageQuery;
@@ -9,9 +10,11 @@ import java.util.List;
 
 public interface IItemService {
 
-    ItemVO queryById(Long id);
+    /** 按 id 查询商品，返回跨服务 DTO（供 controller 直接透出给 Feign 调用方）。 */
+    ItemDTO queryById(Long id);
 
-    List<ItemVO> queryByIds(List<Long> ids);
+    /** 按 id 批量查询商品，返回跨服务 DTO 列表。 */
+    List<ItemDTO> queryByIds(List<Long> ids);
 
     PageDTO<ItemVO> pageQuery(ItemPageQuery query);
 

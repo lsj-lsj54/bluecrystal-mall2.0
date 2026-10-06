@@ -2,6 +2,7 @@ package com.bluecrystal.item.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.bluecrystal.api.dto.ItemDTO;
 import com.bluecrystal.common.domain.PageDTO;
 import com.bluecrystal.common.exception.BizIllegalException;
 import com.bluecrystal.common.exception.BadRequestException;
@@ -35,7 +36,7 @@ public class ItemServiceImpl implements IItemService {
   private final ItemMapper itemMapper;
 
   @Override
-  public ItemVO queryById(Long id) {
+  public ItemDTO queryById(Long id) {
     // 1.先检查redis有没有
     Item item = (Item) redisTemplate.opsForValue().get(String.valueOf(id));
     // 2.1 如果没有，查数据库看有没有
@@ -53,18 +54,18 @@ public class ItemServiceImpl implements IItemService {
     if (item.getId() == null) {
       throw new BadRequestException("商品不存在：" + id);
     }
-    // 4。返回对象
-    return toVO(item);
+    // 4。转成跨服务 DTO 返回
+    return toDTO(item);
   }
 
   @Override
-  public List<ItemVO> queryByIds(List<Long> ids) {
+  public List<ItemDTO> queryByIds(List<Long> ids) {
     // 1.先检查ids是否为空
     if (CollectionUtils.isEmpty(ids)) {
       return List.of();
     }
     // 2.先去reids找，找不到再去数据库找，数据库找到的话就存到redis
-    List<Item> items = new ArrayList<>();
+    List<ItemDTO> items = new ArrayList<>();
     for (long id : ids) {
       // 2.1在redis里找
       Item item = (Item) redisTemplate.opsForValue().get(String.valueOf(id));
@@ -74,7 +75,7 @@ public class ItemServiceImpl implements IItemService {
         // 分支一 数据库有，写入redis，存入列表
         if (item != null) {
           redisTemplate.opsForValue().set(String.valueOf(id), item, 60, TimeUnit.MINUTES);
-          items.add(item);
+          items.add(toDTO(item));
         }
         // 分支二 数据库也没有，写入空值到redis，防止缓存穿透
         else {
@@ -84,13 +85,13 @@ public class ItemServiceImpl implements IItemService {
       // 分支二 redis找到了，判断是不是空值,不是空值就存到列表，是空值不做任何操作
       else {
         if (item.getId() != null) {
-          items.add(item);
+          items.add(toDTO(item));
         }
       }
     }
     // 3.把DTO映射为VO返回前端
 
-    return items.stream().map(this::toVO).toList();
+    return items;
   }
 
   @Override
@@ -121,6 +122,18 @@ public class ItemServiceImpl implements IItemService {
       }
     }
     log.info("扣减库存成功，共 {} 个商品", details.size());
+  }
+
+  /** PO → 跨服务 DTO（字段与 ItemVO 对齐：id/name/price/image/spec/stock/sold）。 */
+  private ItemDTO toDTO(Item item) {
+    return new ItemDTO(
+        item.getId(),
+        item.getName(),
+        item.getPrice(),
+        item.getImage(),
+        item.getSpec(),
+        item.getStock(),
+        item.getSold());
   }
 
   private ItemVO toVO(Item item) {
