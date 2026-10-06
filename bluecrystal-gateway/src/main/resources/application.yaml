@@ -1,0 +1,76 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: gateway
+  config:
+    # Nacos 配置中心：optional 前缀保证本地没起 Nacos 时也能启动（用本地默认配置）
+    import:
+      - optional:nacos:shared-log.yaml
+  cloud:
+    nacos:
+      server-addr: ${NACOS_ADDR:127.0.0.1:8848}
+      username: ${NACOS_USERNAME:nacos}
+      password: ${NACOS_PASSWORD:nacos}
+      discovery:
+        server-addr: ${NACOS_ADDR:127.0.0.1:8848}
+      config:
+        file-extension: yaml
+    gateway:
+      # Spring Cloud Gateway 4.2+ / 5.x 的新配置前缀（旧前缀 spring.cloud.gateway.* 已废弃）
+      server:
+        webflux:
+          globalcors:
+            cors-configurations:
+              '[/**]':
+                allowedOriginPatterns: "*"
+                allowedMethods: "*"
+                allowedHeaders: "*"
+                exposedHeaders: "*"
+                allowCredentials: true
+                maxAge: 3600
+          routes:
+            - id: item-service
+              uri: lb://item-service
+              predicates:
+                - Path=/items/**,/search/**
+            - id: cart-service
+              uri: lb://cart-service
+              predicates:
+                - Path=/carts/**
+            - id: user-service
+              uri: lb://user-service
+              predicates:
+                - Path=/users/**,/addresses/**
+            - id: trade-service
+              uri: lb://trade-service
+              predicates:
+                - Path=/orders/**
+            - id: pay-service
+              uri: lb://pay-service
+              predicates:
+                - Path=/pay-orders/**
+
+bc:
+  jwt:
+    # 网关与 user-service 必须使用同一个密钥；UTF-8 编码后不少于 32 字节
+    secret: ${BLUECRYSTAL_JWT_SECRET:bluecrystal-mall-dev-secret-change-me-32bytes}
+    ttl: ${BLUECRYSTAL_JWT_TTL:30m}
+  auth:
+    exclude-paths:
+      - /search/**
+      - /users/login
+      - /items/**
+      - /actuator/**
+
+management:
+  # 注意：Spring Cloud 2025.0.x 的 gateway 模块（4.3.x）没有注册 actuator 的 gateway 端点，
+  # 因此这里只暴露 health/info；需要看路由请开 DEBUG 日志或使用 Gateway 的 RouteDefinitionRepository。
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: always

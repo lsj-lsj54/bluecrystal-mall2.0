@@ -1,0 +1,4 @@
+# Spring Boot 3.x 自动装配注册文件（替代 Boot 2.x 的 META-INF/spring.factories）
+com.bluecrystal.common.web.CommonWebAutoConfiguration
+com.bluecrystal.common.mybatis.CommonMybatisAutoConfiguration
+com.bluecrystal.common.json.CommonJacksonAutoConfiguration

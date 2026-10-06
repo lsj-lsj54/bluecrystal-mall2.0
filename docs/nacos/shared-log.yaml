@@ -1,0 +1,11 @@
+# Nacos 共享配置
+# Data ID: shared-log.yaml    Group: DEFAULT_GROUP    格式: YAML
+logging:
+  level:
+    root: info
+    com.bluecrystal: debug
+  pattern:
+    dateformat: HH:mm:ss.SSS
+    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level [%thread] %logger{36} - %msg%n"
+  file:
+    name: logs/${spring.application.name}/${spring.application.name}.log

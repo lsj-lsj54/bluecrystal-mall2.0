@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <artifactId>bluecrystal-mall</artifactId>
+        <groupId>com.bluecrystal</groupId>
+        <version>2.0.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>bluecrystal-api</artifactId>
+    <name>bluecrystal-api</name>
+    <description>跨服务 OpenFeign 客户端与共享 DTO</description>
+
+    <dependencies>
+        <dependency>
+            <groupId>com.bluecrystal</groupId>
+            <artifactId>bluecrystal-common</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+
+        <!-- 声明式远程调用 + 客户端负载均衡 -->
+        <dependency>
+            <groupId>org.springframework.cloud</groupId>
+            <artifactId>spring-cloud-starter-openfeign</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.cloud</groupId>
+            <artifactId>spring-cloud-starter-loadbalancer</artifactId>
+        </dependency>
+
+        <!-- 仅为传播 Seata XID 需要 RootContext；设为 optional，业务服务自行决定是否引入 Seata -->
+        <dependency>
+            <groupId>com.alibaba.cloud</groupId>
+            <artifactId>spring-cloud-starter-alibaba-seata</artifactId>
+            <optional>true</optional>
+        </dependency>
+    </dependencies>
+</project>

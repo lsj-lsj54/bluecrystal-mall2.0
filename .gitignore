@@ -1,0 +1,33 @@
+# IDEA / Eclipse
+.idea/
+*.iml
+*.ipr
+*.iws
+.settings/
+.classpath
+.project
+
+# Build
+target/
+build/
+out/
+!.mvn/wrapper/maven-wrapper.jar
+
+# Logs
+*.log
+logs/
+
+# OS
+*.tmp
+*.bak
+Thumbs.db
+.DS_Store
+
+# Secrets and local overrides
+.env
+.env.*
+!.env.example
+*.jks
+*.keystore
+*.p12
+*.pem

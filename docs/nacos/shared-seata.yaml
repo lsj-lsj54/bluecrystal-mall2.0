@@ -1,0 +1,20 @@
+# Nacos 共享配置
+# Data ID: shared-seata.yaml    Group: DEFAULT_GROUP    格式: YAML
+# 说明：Seata 2.x（org.apache.seata）客户端配置。骨架用 file 注册中心 + file 配置中心，
+#      生产环境应改为 registry.type=nacos、config.type=nacos。
+seata:
+  enabled: ${SEATA_ENABLED:true}
+  application-id: ${spring.application.name}
+  tx-service-group: bluecrystal_tx_group
+  enable-auto-data-source-proxy: true
+  service:
+    vgroup-mapping:
+      bluecrystal_tx_group: default
+    grouplist:
+      default: ${SEATA_ADDR:127.0.0.1:8091}
+  registry:
+    type: file
+  config:
+    type: file
+  # 事务分组名带下划线时，Seata 2.x 需要显式允许
+  enable-client-batch-send-request: true
