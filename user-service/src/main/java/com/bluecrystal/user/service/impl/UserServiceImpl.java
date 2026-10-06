@@ -60,8 +60,16 @@ public class UserServiceImpl implements IUserService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void deductBalance(Long userId, Integer amount) {
+        if (userId == null) {
+            throw new BadRequestException("用户 id 不能为空");
+        }
         if (amount == null || amount <= 0) {
             throw new BadRequestException("扣减金额必须为正数");
+        }
+        // 越权保护：只能扣当前登录用户自己的余额（pay-service 会把登录用户的 X-User-Id 透传过来）
+        Long currentUserId = UserContext.requireUser();
+        if (!currentUserId.equals(userId)) {
+            throw new ForbiddenException("只能操作自己的账户");
         }
         int rows = userMapper.deductBalance(userId, amount);
         if (rows == 0) {

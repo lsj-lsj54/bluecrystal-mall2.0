@@ -4,13 +4,7 @@ server:
 spring:
   application:
     name: cart-service
-  # 本地默认连本机 MySQL（环境变量可覆盖）；需要由 Nacos 集中管理数据源时打开 shared-jdbc.yaml
-  config:
-    import:
-      - optional:nacos:shared-log.yaml
-      - optional:nacos:shared-seata.yaml
-      # - optional:nacos:shared-jdbc.yaml
-      # - optional:nacos:shared-swagger.yaml
+  # 所有配置都在本文件内（不使用 Nacos 配置中心），可用环境变量覆盖
   datasource:
     driver-class-name: com.mysql.cj.jdbc.Driver
     url: jdbc:mysql://${MYSQL_HOST:localhost}:${MYSQL_PORT:3306}/${bc.db.database}?useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true&rewriteBatchedStatements=true
@@ -23,13 +17,10 @@ spring:
       max-lifetime: 1800000
   cloud:
     nacos:
-      server-addr: ${NACOS_ADDR:127.0.0.1:8848}
       username: ${NACOS_USERNAME:nacos}
       password: ${NACOS_PASSWORD:nacos}
       discovery:
         server-addr: ${NACOS_ADDR:127.0.0.1:8848}
-      config:
-        file-extension: yaml
     sentinel:
       transport:
         dashboard: ${SENTINEL_DASHBOARD:127.0.0.1:8090}
@@ -43,6 +34,30 @@ mybatis-plus:
     db-config:
       id-type: auto
       update-strategy: not_null
+
+seata:
+  enabled: ${SEATA_ENABLED:true}
+  application-id: ${spring.application.name}
+  tx-service-group: bluecrystal_tx_group
+  enable-auto-data-source-proxy: true
+  service:
+    vgroup-mapping:
+      bluecrystal_tx_group: default
+    grouplist:
+      default: ${SEATA_ADDR:127.0.0.1:8091}
+  registry:
+    type: file
+  config:
+    type: file
+
+logging:
+  level:
+    root: info
+    com.bluecrystal: debug
+  pattern:
+    dateformat: HH:mm:ss.SSS
+  file:
+    name: logs/${spring.application.name}/${spring.application.name}.log
 
 bc:
   db:

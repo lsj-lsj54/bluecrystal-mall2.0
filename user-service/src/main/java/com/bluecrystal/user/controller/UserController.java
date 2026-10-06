@@ -14,7 +14,6 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @Tag(name = "用户接口")
@@ -38,11 +37,6 @@ public class UserController {
         return R.ok(userService.currentUser());
     }
 
-    @Operation(summary = "扣减余额（由 pay-service 在全局事务中调用）")
-    @PostMapping("/balance/deduct")
-    public R<Void> deductBalance(@RequestParam("userId") Long userId,
-                                 @RequestParam("amount") Integer amount) {
-        userService.deductBalance(userId, amount);
-        return R.ok();
-    }
+    // 注意：扣余额属于内部能力，已挪到 /internal/users/**（InternalUserController），
+    // 不再通过网关对外暴露，避免任何登录用户都能扣别人余额。
 }

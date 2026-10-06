@@ -4,21 +4,16 @@ server:
 spring:
   application:
     name: gateway
-  config:
-    # Nacos 配置中心：optional 前缀保证本地没起 Nacos 时也能启动（用本地默认配置）
-    import:
-      - optional:nacos:shared-log.yaml
+  # 说明：不使用 Nacos 配置中心，所有配置都写在本文件（以及环境变量）里；
+  #      Nacos 只当注册中心用，发现服务的地址见下面的 discovery。
   cloud:
     nacos:
-      server-addr: ${NACOS_ADDR:127.0.0.1:8848}
       username: ${NACOS_USERNAME:nacos}
       password: ${NACOS_PASSWORD:nacos}
       discovery:
         server-addr: ${NACOS_ADDR:127.0.0.1:8848}
-      config:
-        file-extension: yaml
     gateway:
-      # Spring Cloud Gateway 4.2+ / 5.x 的新配置前缀（旧前缀 spring.cloud.gateway.* 已废弃）
+      # Spring Cloud Gateway 4.2+ / 5.x 的配置前缀（旧前缀 spring.cloud.gateway.* 已废弃）
       server:
         webflux:
           globalcors:
@@ -31,6 +26,15 @@ spring:
                 allowCredentials: true
                 maxAge: 3600
           routes:
+            # /internal/** 是服务间内部接口（扣余额、回写订单支付状态等），一律挡在网关之外。
+            # 这条规则放在最前面；服务间 Feign 调用走服务名直连，不经过网关。
+            - id: internal-deny
+              uri: no://op
+              order: -1
+              predicates:
+                - Path=/internal/**
+              filters:
+                - SetStatus=403
             - id: item-service
               uri: lb://item-service
               predicates:
@@ -58,11 +62,21 @@ bc:
     secret: ${BLUECRYSTAL_JWT_SECRET:bluecrystal-mall-dev-secret-change-me-32bytes}
     ttl: ${BLUECRYSTAL_JWT_TTL:30m}
   auth:
+    # 免登录白名单：只放行只读的商品/搜索、登录接口，以及网关自身的健康检查
     exclude-paths:
       - /search/**
       - /users/login
       - /items/**
-      - /actuator/**
+      - /actuator/health
+
+logging:
+  level:
+    root: info
+    com.bluecrystal: debug
+  pattern:
+    dateformat: HH:mm:ss.SSS
+  file:
+    name: logs/${spring.application.name}/${spring.application.name}.log
 
 management:
   # 注意：Spring Cloud 2025.0.x 的 gateway 模块（4.3.x）没有注册 actuator 的 gateway 端点，

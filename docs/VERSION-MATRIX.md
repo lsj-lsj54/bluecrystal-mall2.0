@@ -22,6 +22,7 @@
 | 密码校验 | `spring-security-rsa` 1.0.10.RELEASE（javax） | **`spring-security-crypto`（Boot 管理）** | 用 `BCryptPasswordEncoder` |
 | JWT | Hutool JWT + JKS/RS256 + keytool 脚本 | **JJWT 0.13.0，HS256 共享密钥** | Boot 3.5 的 BOM 不再管理 nimbus/jjwt，故在根 POM 显式声明 |
 | Hutool | 5.8.11 | **移除** | 骨架不再依赖；需要时加 `cn.hutool:hutool-all:5.8.47` |
+| Redis 客户端 | （v1 只声明了 Caffeine，未真正用缓存） | **`spring-boot-starter-data-redis`（Boot 管理 lettuce 6.6.0）** | v2 商品缓存使用 Redis；**不要**再单独 pin `io.lettuce:lettuce-core`（曾写成 7.5.2.RELEASE，绕过 Boot 兼容矩阵） |
 | Caffeine / RabbitMQ | 声明但业务未用 | **移除** | 消除「声明了却没人用」的依赖 |
 | 容器化 | fabric8 docker-maven-plugin 0.42.1 | **移除，改用 `mvn spring-boot:build-image`** | 旧插件版本过老且绑定 package 阶段拖慢构建 |
 | 配置加载 | `bootstrap.yaml` + `spring-cloud-starter-bootstrap` | **`spring.config.import: optional:nacos:xxx.yaml`** | Boot 2.4+ 起的官方方式；`optional:` 保证本地无 Nacos 也能启动 |
@@ -50,7 +51,9 @@
 1. **javax → jakarta**：`javax.servlet.*` 全部换成 `jakarta.servlet.*`（拦截器、全局异常处理）。
 2. **自动装配注册文件变更**：`META-INF/spring.factories` → `META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports`，配置类改用 `@AutoConfiguration`。
 3. **移除 `spring.mvc.pathmatch.matching-strategy: ant_path_matcher`**：Boot 3 只保留 PathPatternParser；网关侧的白名单匹配改用 `PathPatternParser`。
-4. **移除 `spring-cloud-starter-bootstrap`**：改用 `spring.config.import`。
+4. **彻底不用 Nacos 配置中心**：Boot 2.4+ 的 `spring.config.import` 也不再使用 —— 所有配置直接写在各模块
+   `application.yaml` 里，Nacos 只保留服务发现（`spring-cloud-starter-alibaba-nacos-config` 与
+   `docs/nacos/*.yaml` 已删除）。
 5. **网关配置前缀变更**：`spring.cloud.gateway.routes` → `spring.cloud.gateway.server.webflux.routes`。
 6. **MyBatis-Plus 分页**：需显式引入 `mybatis-plus-jsqlparser`，否则 `PaginationInnerInterceptor` 不生效/报错。
 7. **Swagger 注解**：`io.swagger.annotations.*`（OpenAPI 2）→ `io.swagger.v3.oas.annotations.*`（OpenAPI 3）。
@@ -96,7 +99,24 @@
    因此 `/actuator/gateway/routes` 返回 404。已从 `management.endpoints.web.exposure.include` 中去掉 `gateway`。
 3. **服务在没有 Nacos 时起不来**：数据源原本只放在 Nacos 的 `shared-jdbc.yaml` 里，
    导致本地只有 MySQL 时启动失败（`Failed to configure a DataSource`）。已改为
-   **各服务 `application.yaml` 内置环境变量驱动的数据源默认值**，Nacos 的 `shared-jdbc.yaml` 变成可选的集中式覆盖。
+   **各服务 `application.yaml` 内置环境变量驱动的数据源默认值**；随后按要求彻底移除 Nacos 配置中心，
+   日志、Seata、Redis 等配置也一并落到各服务本地文件。
+
+## 6. 代码审计：发现并修复的 Bug
+
+| # | 位置 | 问题 | 修复 |
+|---|------|------|------|
+| 1 | `CommonExceptionAdvice` | 只有 `@ExceptionHandler(Exception.class)` 兜底，Spring MVC 的 404/405/415 全被当成 500，排查时严重误导 | 补 `NoResourceFoundException`(404)、`HttpRequestMethodNotSupportedException`(405)、`HttpMediaTypeNotSupportedException`(415)、缺参/类型不匹配(400) 的专门处理 |
+| 2 | `DefaultFeignConfig` | 下游返回 4xx/5xx 时 Feign 只抛 `FeignException`，`R` 里的 code/msg 全丢，最终显示「服务器繁忙」 | 新增 `BluecrystalFeignErrorDecoder`，把响应体解析回 `CommonException` |
+| 3 | `ItemStockDeductDTO` + `ItemServiceImpl` | 扣库存入参没有校验，`num` 传负数时 `stock >= num` 恒真 → **扣库存变成加库存** | DTO 加 `@NotNull/@Min(1)`，Controller 用 `List<@Valid ...>` 触发元素校验，服务层再兜一次 |
+| 4 | `OrderServiceImpl.createOrder` | 用**前端传来的 price** 计算总价，把 price 改成 1 就能一分钱下单 | 先 `ItemClient` 回查商品，用服务端价格生成快照并计算总价，商品不存在直接拒绝 |
+| 5 | `PayOrderServiceImpl.applyPay` | 金额校验是 `form.amount()` 与刚被赋值的 `payOrder.getAmount()` 自比，恒成立；从不核对订单真实金额与归属 | 新增 `GET /internal/orders/{id}`，扣款前核对订单存在/归属/状态/金额一致 |
+| 6 | `UserController`、`OrderController` | 内部写接口经网关对外暴露：任何登录用户可扣**别人**余额（传 userId），或不付钱直接 `pay-success` 改自己订单为已支付 | 内部接口迁到 `/internal/**`（网关 `SetStatus=403` 拦截）+ 服务层归属校验 |
+| 7 | `RedisConfig` | `GenericJackson2JsonRedisSerializer` 默认 ObjectMapper 未注册 `JavaTimeModule`，缓存含 `LocalDateTime` 的 `Item` 时报 `InvalidDefinitionException` | 显式构造 ObjectMapper（JavaTimeModule + 默认类型信息） |
+| 8 | `ItemServiceImpl.queryByIds` | 逐个 `get()`，N 个商品 = N 次 Redis 往返 | 改成一次 `multiGet` |
+| 9 | `ItemServiceImpl.deductStock` | 改库存后不删缓存 → 最长 60 分钟读到旧库存 | 扣减成功后删除对应缓存 key |
+| 10 | `ItemServiceImpl` 缓存读写 | Redis 不可用时商品接口整体不可用（本机 Redis 默认没起） | 缓存读写包 `DataAccessException` 降级为直接查库 |
+| 11 | `item-service/pom.xml` | `bluecrystal-api` 重复声明两次（其中一次硬编码 `2.0.0-SNAPSHOT`）；`io.lettuce:lettuce-core` 被 pin 到 7.5.2.RELEASE，而 Boot 3.5.16 管理的是 6.6.0 | 删除重复依赖与 lettuce 显式版本，统一交给 Boot BOM |
 
 ### 尚未能验证的部分（环境限制）
 

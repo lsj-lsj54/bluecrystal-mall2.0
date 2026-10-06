@@ -3,6 +3,7 @@ package com.bluecrystal.pay.service.impl;
 import com.baomidou.mybatisplus.core.toolkit.IdWorker;
 import com.bluecrystal.api.client.TradeClient;
 import com.bluecrystal.api.client.UserClient;
+import com.bluecrystal.api.dto.OrderDTO;
 import com.bluecrystal.common.domain.R;
 import com.bluecrystal.common.exception.BadRequestException;
 import com.bluecrystal.common.exception.BizIllegalException;
@@ -29,6 +30,9 @@ import java.util.Objects;
 @RequiredArgsConstructor
 public class PayOrderServiceImpl implements IPayOrderService {
 
+    /** 订单状态：待支付（与 trade-service 保持一致）。 */
+    private static final int ORDER_STATUS_UN_PAID = 1;
+
     private final PayOrderMapper payOrderMapper;
 
     private final UserClient userClient;
@@ -40,13 +44,6 @@ public class PayOrderServiceImpl implements IPayOrderService {
     @Transactional(rollbackFor = Exception.class)
     public PayOrderVO applyPay(PayOrderFormDTO form) {
         Long userId = UserContext.requireUser();
-        if (form.bizOrderNo() == null) {
-            throw new BadRequestException("业务订单号不能为空");
-        }
-        // 金额必须为正；真实场景还应回查 trade-service 的订单金额做核对
-        if (form.amount() == null || form.amount() <= 0) {
-            throw new BadRequestException("支付金额必须大于 0");
-        }
 
         // TODO 后续接入支付宝/微信：按 payChannelCode 分发到各自的渠道策略实现
         //  （下单预支付、异步回调验签、主动查单），当前骨架只支持余额支付
@@ -54,36 +51,37 @@ public class PayOrderServiceImpl implements IPayOrderService {
             throw new BizIllegalException("暂不支持的支付渠道");
         }
 
-        // 1. 先落一条待支付的支付单
+        // 1. 向订单服务核对：订单必须存在、属于当前用户、处于待支付、且金额与本次支付一致。
+        //    必须在扣款之前完成，否则「1 分钱付 1999 元的订单」这类金额篡改会直接扣款成功。
+        OrderDTO order = requirePayableOrder(userId, form);
+
+        // 2. 落一条待支付的支付单
+        LocalDateTime now = LocalDateTime.now();
         PayOrder payOrder = new PayOrder();
-        payOrder.setBizOrderNo(form.bizOrderNo());
+        payOrder.setBizOrderNo(order.id());
         payOrder.setBizUserId(userId);
         payOrder.setPayChannelCode(PayChannel.BALANCE.getCode());
-        payOrder.setAmount(form.amount());
+        payOrder.setAmount(order.totalFee());
         payOrder.setStatus(PayStatus.WAIT_PAY.getValue());
-        payOrder.setCreateTime(LocalDateTime.now());
-        payOrder.setUpdateTime(LocalDateTime.now());
-        // 支付单金额必须与表单金额一致，避免渠道接入后出现金额篡改
-        if (!Objects.equals(form.amount(), payOrder.getAmount())) {
-            throw new BizIllegalException("支付金额与业务订单金额不一致");
-        }
+        payOrder.setCreateTime(now);
+        payOrder.setUpdateTime(now);
         payOrderMapper.insert(payOrder);
         log.info("支付单已创建：id={}, bizOrderNo={}, amount={} 分",
                 payOrder.getId(), payOrder.getBizOrderNo(), payOrder.getAmount());
 
-        // 2. 余额支付：扣余额（user-service 分支），返回失败即抛异常，让全局事务回滚
-        R<Void> deductResult = userClient.deductBalance(userId, form.amount());
+        // 3. 余额支付：扣余额（user-service 分支），失败即抛异常让全局事务回滚
+        R<Void> deductResult = userClient.deductBalance(userId, payOrder.getAmount());
         if (deductResult == null || !deductResult.success()) {
             throw new BizIllegalException(deductResult == null ? "余额支付失败" : deductResult.msg());
         }
 
-        // 3. 回写订单已支付（trade-service 分支）
-        R<Void> paidResult = tradeClient.markOrderPaid(form.bizOrderNo());
+        // 4. 回写订单已支付（trade-service 分支）
+        R<Void> paidResult = tradeClient.markOrderPaid(order.id());
         if (paidResult == null || !paidResult.success()) {
             throw new BizIllegalException(paidResult == null ? "回写订单支付状态失败" : paidResult.msg());
         }
 
-        // 4. 更新支付单为已支付，并写入支付单号与支付成功时间
+        // 5. 更新支付单为已支付，并写入支付单号与支付成功时间
         PayOrder success = new PayOrder();
         success.setId(payOrder.getId());
         success.setPayOrderNo(IdWorker.getId());
@@ -94,12 +92,15 @@ public class PayOrderServiceImpl implements IPayOrderService {
         success.setUpdateTime(LocalDateTime.now());
         payOrderMapper.updateById(success);
 
-        log.info("余额支付成功：payOrderNo={}, bizOrderNo={}", success.getPayOrderNo(), form.bizOrderNo());
+        log.info("余额支付成功：payOrderNo={}, bizOrderNo={}", success.getPayOrderNo(), order.id());
         return toVO(payOrderMapper.selectById(payOrder.getId()));
     }
 
     @Override
     public PayOrderVO queryById(Long id) {
+        if (id == null) {
+            throw new BadRequestException("支付单 id 不能为空");
+        }
         PayOrder payOrder = payOrderMapper.selectById(id);
         if (payOrder == null) {
             throw new BadRequestException("支付单不存在：" + id);
@@ -108,6 +109,26 @@ public class PayOrderServiceImpl implements IPayOrderService {
             throw new ForbiddenException("无权查看他人的支付单");
         }
         return toVO(payOrder);
+    }
+
+    /** 查询订单并逐项校验，任一项不满足都直接抛业务异常（不会扣款）。 */
+    private OrderDTO requirePayableOrder(Long userId, PayOrderFormDTO form) {
+        R<OrderDTO> orderResult = tradeClient.queryOrderById(form.bizOrderNo());
+        OrderDTO order = orderResult == null ? null : orderResult.data();
+        if (order == null) {
+            throw new BizIllegalException("订单不存在或不可支付：" + form.bizOrderNo());
+        }
+        if (!Objects.equals(order.userId(), userId)) {
+            // trade-service 内部也会做归属校验，这里再挡一层
+            throw new ForbiddenException("无权支付他人的订单");
+        }
+        if (!Objects.equals(order.status(), ORDER_STATUS_UN_PAID)) {
+            throw new BizIllegalException("订单状态不允许支付：" + order.status());
+        }
+        if (!Objects.equals(order.totalFee(), form.amount())) {
+            throw new BizIllegalException("支付金额与订单金额不一致，订单金额：" + order.totalFee() + " 分");
+        }
+        return order;
     }
 
     private PayOrderVO toVO(PayOrder payOrder) {

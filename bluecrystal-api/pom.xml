@@ -21,6 +21,12 @@
             <version>${project.version}</version>
         </dependency>
 
+        <!-- 把下游返回的统一响应体 R 解析回业务异常（ErrorDecoder）需要 Jackson -->
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
+        </dependency>
+
         <!-- 声明式远程调用 + 客户端负载均衡 -->
         <dependency>
             <groupId>org.springframework.cloud</groupId>

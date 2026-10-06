@@ -60,14 +60,10 @@
             <scope>runtime</scope>
         </dependency>
 
-        <!-- 注册中心 + 配置中心 -->
+        <!-- 注册中心（不使用 Nacos 配置中心：配置全部写在 application.yaml） -->
         <dependency>
             <groupId>com.alibaba.cloud</groupId>
             <artifactId>spring-cloud-starter-alibaba-nacos-discovery</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>com.alibaba.cloud</groupId>
-            <artifactId>spring-cloud-starter-alibaba-nacos-config</artifactId>
         </dependency>
         <!-- 流量防护 -->
         <dependency>

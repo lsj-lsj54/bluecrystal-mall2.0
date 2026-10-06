@@ -12,7 +12,6 @@ import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -38,10 +37,6 @@ public class OrderController {
         return R.ok(orderService.queryById(orderId));
     }
 
-    @Operation(summary = "支付成功回写订单状态（由 pay-service 调用）")
-    @PutMapping("/{orderId}/pay-success")
-    public R<Void> markPaid(@PathVariable("orderId") Long orderId) {
-        orderService.markPaid(orderId);
-        return R.ok();
-    }
+    // 注意：「支付成功回写」已挪到 /internal/orders/**（InternalOrderController），
+    // 不对外暴露，否则用户可以不付钱直接把自己的订单标记成已支付。
 }
